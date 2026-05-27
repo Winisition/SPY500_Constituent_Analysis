@@ -9,3 +9,4 @@ duckdb==1.5.2
 pandas==3.0.2
 tqdm==4.67.1
 yfinance==1.3.0
+lxml
