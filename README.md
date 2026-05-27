@@ -1,0 +1,164 @@
+# S&P 500 Constituent Analysis
+
+An end-to-end analytics pipeline that scrapes, transforms, and models S&P 500 constituent data to answer questions about index composition, return concentration, and individual stock performance over time.
+
+Built with Python, DuckDB, and dbt.
+
+## What It Does
+
+The pipeline ingests three datasets — current S&P 500 constituents, historical membership changes, and daily price history for all current and former members — then transforms them through a staging → intermediate → mart layer to produce analytical tables covering:
+
+1. **Constituent tenure**: How long has each stock been in the index?
+
+2. **Annualised volatility**: How has each constituent's volatility changed year over year?
+
+3. **Gain/loss ratio**: How do average up-day returns compare to average down-day returns?
+
+4. **Return concentration**: How concentrated are total positive returns among the top 10 tickers, and what share of constituents beat the SPY benchmark each year?
+
+5. **Sector composition**: How is the current index weighted across GICS sectors?
+
+6. **Win rate**: What fraction of trading days were positive for each ticker?
+
+## Findings
+
+Note: This analysis uses current S&P 500 constituents only, applied historically. A full historical reconstruction would require point-in-time membership data, which isn't publicly available in clean form.
+
+The S&P 500 is treated as shorthand for "the market" — a diversified basket of America's largest companies. But how diversified is it really?
+
+The index is not as stable as it looks. The median constituent has been in for only about 20 years, with most tenures clustered under 15. Companies cycle in and out constantly, while a small cohort of legacy names has survived for 60+ years. It is a reshuffling portfolio with a thin core of survivors.
+
+What remains is lopsided. Almost half of all current constituents (46%) sit in just three sectors: Industrials, Financials, and Information Technology. An investor buying the S&P 500 is making a concentrated sector bet whether they realise it or not.
+
+That concentration extends to returns. The top 10 tickers typically account for 10–30% of all positive returns in a given year, spiking to ~70% in 2008. Fewer than half of constituents beat SPY in most recent years. The index is increasingly carried by a shrinking minority.
+
+Crucially, these outperformers don't win more often. Win rates cluster around 50% across all sectors — a coin flip. Gain/loss ratios are similarly uniform at ~1.08. The concentration is driven entirely by magnitude: a few names in Tech and Health Care collect disproportionately larger payouts when they win.
+
+Risk follows the same pattern. Tech, Energy, and Consumer Discretionary rank consistently among the most volatile sectors, and that hierarchy barely rotates. During crises, dispersion within these sectors spikes — a few names blow up while others hold steady. Even within the riskiest sectors, risk is concentrated in a handful of tickers.
+
+The S&P 500 looks diversified on the surface. Underneath, it is a concentrated, high-turnover portfolio where a few sectors and a few names within those sectors drive both the returns and the risk. "Buying the market" is not the same as buying 500 equally important stocks.
+
+## Project Structure
+
+```
+├── ingest/                          # Python scrape scripts (raw → DuckDB)
+│   ├── scrape_01_wikipedia.py       # Current constituents + changes history
+│   ├── scrape_02_yfinance_tickers.py  # Daily prices for all tickers (incremental)
+│   ├── scrape_03_yfinance_spy.py    # Daily prices for SPY (incremental)
+│   └── check_01.py                  # Post-ingest data quality checks
+├── models/
+│   ├── staging/                     # Clean + rename raw tables
+│   ├── intermediate/                # Reusable building blocks (tenure spans, returns)
+│   └── mart/                        # Final analytical tables
+├── data/                            # DuckDB warehouse (gitignored)
+├── main.py                          # Orchestrator: ingest → check → dbt run
+├── project_config.py                # Shared DB path config
+├── dbt_project.yml
+└── requirements.txt
+```
+
+## Setup
+
+### Prerequisites
+
+1. Python 3.10+
+2. pip
+
+```bash
+git clone https://github.com/Winisition/SPY500_Constituent_Analysis
+cd SPY500_Constituent_Analysis
+pip install -r requirements.txt
+```
+
+### Configure dbt
+
+A `profiles.yml.example` is included in the repo. Copy it to `~/.dbt/profiles.yml` and replace `<absolute-path-to-project>` with the full path to your cloned repo.
+
+## Usage
+
+### Run the full pipeline
+
+```bash
+python main.py
+```
+
+This runs all ingest scripts, data quality checks, and then `dbt run` in sequence.
+
+### Run individual steps
+
+```bash
+python ingest/scrape_01_wikipedia.py
+python ingest/scrape_02_yfinance_tickers.py
+python ingest/scrape_03_yfinance_spy.py
+python ingest/check_01.py
+dbt run
+```
+
+The price scripts are incremental — first run fetches full history, subsequent runs fetch only new data.
+
+## Data Sources
+
+| Source | Table | Description |
+|--------|-------|-------------|
+| Wikipedia | `snp500_current_constituents` | Current S&P 500 members with sector, date added |
+| Wikipedia | `snp500_changes_history` | Historical additions and removals |
+| Yahoo Finance | `snp500_raw_prices` | Daily OHLCV for all current + historical tickers |
+| Yahoo Finance | `snp500_spy_prices` | Daily OHLCV for SPY ETF (index benchmark) |
+
+## dbt model lineage
+
+```
+
+stg_raw_prices ───────────┐
+stg_current_constituents ─┤─► int_current_constituent_prices
+                          │     ├─► int_daily_return
+                          │     │     ├──● mart_annualised_volatility
+                          │     │     ├──● mart_win_rate
+                          │     │     └──● mart_gain_loss_ratio
+                          │     └─► int_constituent_returns (+ int_spy_returns)
+                          │           └──● mart_return_concentration (+ int_spy_returns)
+                          │
+stg_spy_prices ───────────┴─► int_spy_returns
+
+stg_changes_history ──────── int_tenure_event_log_base
+                               └─► int_tenure_event_log_ordered
+                                     └─► int_tenure_event_log_constructed ──┐
+stg_current_constituents ──── int_tenure_current_constituents ──────────────┤
+                          └──● mart_sector_composition                      │
+                                                              └──● mart_current_constituent_tenure
+```
+
+## Tech Stack
+
+1. **Python** — ingestion, orchestration
+2. **DuckDB** — warehouse
+3. **dbt-duckdb** — transformation layer (staging → intermediate → mart)
+4. **yfinance** — daily price data
+5. **pandas** — data wrangling
+
+## Limitations
+
+1. **Survivorship bias on prices.** Approximately 23% of historical S&P 500 constituents have no price data on Yahoo Finance — these are mostly genuine delistings such as bankruptcies and acquisitions from before 2015. All price-derived metrics exclude missing-price tickers (~23%), which biases results toward surviving constituents
+
+2. **yfinance unreliability.** Yahoo Finance is rate-limited and periodically IP-blocks scrapers. Yahoo can change its internal endpoints at any time. For production reproducibility, a paid provider (Tiingo, Polygon) or a static source (stooq) is more reliable.
+
+3. **Pre-1957 stint assumption.** Tickers that appear in the Wikipedia changes log only as removals (no matching add event) are assumed to have entered the index at S&P 500 inception (March 4, 1957). This overstates tenure for those tickers, as they may have joined later but before the changes log starts.
+
+4. **Wikipedia data quality.** Constituents and changes data are community-edited. It is possible for there to be missing changes, inaccurate dates and inconsistent reason wording. There is no cross-validation against S&P's official press releases or a paid data source.
+
+5. **"Other" reason bucket.** Removals whose Wikipedia reason text doesn't match any regex pattern fall into "Other." Inspection shows these are mostly historical IPO debuts and ambiguous index changes, but some real M&A and market cap cases are likely missed.
+
+6. **Sector classification is a current snapshot only.** Each ticker has one GICS sector from the current Wikipedia table. Reclassifications over time aren't tracked — sector-based KPIs treat current sector as historical sector.
+
+7. **Date format parsing is brittle.** `strptime` with `'%B %d, %Y'` assumes Wikipedia's date format is consistent across all 394 change rows. Edge cases (e.g., "circa 1990" or unusual formatting) fail silently and rows are dropped.
+
+## What's next
+
+1. **Switch price ingestion to stooq** for reliability — yfinance's rate limiting makes reproducing the pipeline risky in the future
+
+2. **Add the "index inclusion effect" KPI** that was deferred from original scope — does being added to the S&P 500 actually move a stock's price?
+
+3. **Add dbt tests** Expand dbt test coverage to intermediate and mart layers beyond the existing tenure test.
+
+4. **Build a Streamlit dashboard** over the marts as a presentation layer — currently the marts are queried directly via DuckDB CLI.
+

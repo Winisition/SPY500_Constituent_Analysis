@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: main
+    tables:
+      - name: snp500_current_constituents
+        columns:
+          - name: Symbol
+            tests:
+              - not_null
+              - unique
+
+      - name: snp500_changes_history
+
+      - name: snp500_raw_prices
+        columns:
+          - name: Ticker
+            tests:
+              - not_null
+          - name: Date
+            tests:
+              - not_null
+
+      - name: snp500_spy_prices
+        columns:
+          - name: Date
+            tests:
+              - not_null
+              - unique

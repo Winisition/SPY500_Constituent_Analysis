@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_snp500_current_constituents
+    columns:
+      - name: ticker
+        tests:
+          - not_null
+          - unique
+      - name: sector
+        tests:
+          - not_null
+
+  - name: stg_snp500_raw_prices
+    columns:
+      - name: ticker
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+
+  - name: stg_snp500_spy_prices
+    columns:
+      - name: date
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_snp500_changes_history
+    columns:
+      - name: start_date
+        tests:
+          - not_null

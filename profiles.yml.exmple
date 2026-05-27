@@ -1,0 +1,9 @@
+# Copy this file to ~/.dbt/profiles.yml
+# Replace <absolute-path-to-project> with the full path to your cloned repo.
+
+snp500:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: '<absolute-path-to-project>/data/warehouse.duckdb'
