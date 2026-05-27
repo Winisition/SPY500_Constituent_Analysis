@@ -24,19 +24,24 @@ The pipeline ingests three datasets — current S&P 500 constituents, historical
 
 Note: This analysis uses current S&P 500 constituents only, applied historically. A full historical reconstruction would require point-in-time membership data, which isn't publicly available in clean form.
 
-The S&P 500 is treated as shorthand for "the market" — a diversified basket of America's largest companies. But how diversified is it really?
+The S&P 500 is treated as shorthand for "the market": A diversified basket of America's largest companies. But is it really?
 
-The index is not as stable as it looks. The median constituent has been in for only about 20 years, with most tenures clustered under 15. Companies cycle in and out constantly, while a small cohort of legacy names has survived for 60+ years. It is a reshuffling portfolio with a thin core of survivors.
+![alt text](image.png)
+Tickers in the index often changes more often than it seems. The median constituent has been in for about 20 years, with most tenures under 15. However, a small exceptional group of names has been there since the 1960s.
 
-What remains is lopsided. Almost half of all current constituents (46%) sit in just three sectors: Industrials, Financials, and Information Technology. An investor buying the S&P 500 is making a concentrated sector bet whether they realise it or not.
+![alt text](image-1.png)
+The sector breakdown is also surprisingly concentrated. Nearly half of current constituents (46%) sit in just three sectors: Industrials, Financials, and Information Technology. Implicity, buying the S&P 500 is a sector bet whether unintended or not.
 
-That concentration extends to returns. The top 10 tickers typically account for 10–30% of all positive returns in a given year, spiking to ~70% in 2008. Fewer than half of constituents beat SPY in most recent years. The index is increasingly carried by a shrinking minority.
+![alt text](image-2.png)
+Returns are similarly concentrated. The top 10 tickers typically capture 10–30% of all positive returns in a given year, with that figure spiking to ~70% in 2008. In most recent years, fewer than half of constituents actually beat the average returns of SPY
 
-Crucially, these outperformers don't win more often. Win rates cluster around 50% across all sectors — a coin flip. Gain/loss ratios are similarly uniform at ~1.08. The concentration is driven entirely by magnitude: a few names in Tech and Health Care collect disproportionately larger payouts when they win.
+![alt text](image-3.png)
+What's interesting is that the outperformers don't win more frequently, like we normally expect. The number of green days sit at around 50% across all sectors. The concentration comes entirely from magnitude: a handful of names in Tech and Health Care collect disproportionately large returns when they do win.
 
-Risk follows the same pattern. Tech, Energy, and Consumer Discretionary rank consistently among the most volatile sectors, and that hierarchy barely rotates. During crises, dispersion within these sectors spikes — a few names blow up while others hold steady. Even within the riskiest sectors, risk is concentrated in a handful of tickers.
+![alt text](image-4.png)
+Volatility tells the same story. Tech, Energy, and Consumer Discretionary are consistently the most volatile sectors, and that ranking barely shifts year to year. During downturns, dispersion within those sectors spikes, but the risk stays concentrated in the same few names.
 
-The S&P 500 looks diversified on the surface. Underneath, it is a concentrated, high-turnover portfolio where a few sectors and a few names within those sectors drive both the returns and the risk. "Buying the market" is not the same as buying 500 equally important stocks.
+The S&P 500 looks like broad market exposure. In practice it's a high-turnover portfolio where a small number of sectors and an even smaller number of stocks within those sectors drive most of the returns and most of the risk.
 
 ## Project Structure
 
