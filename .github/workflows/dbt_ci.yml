@@ -1,0 +1,48 @@
+name: dbt CI
+
+# When does this run?
+# - Every time you push to main
+# - Every time you open a pull request against main
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out your repo code onto the CI machine
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Install Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Install all your dependencies (dbt, duckdb, yfinance, etc.)
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 4. Set up dbt profile
+      #    Your project uses profiles.yml to find the DuckDB path.
+      #    CI needs its own copy pointing to the right location.
+      - name: Configure dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'EOF'
+          snp500:
+            target: dev
+            outputs:
+              dev:
+                type: duckdb
+                path: ${{ github.workspace }}/data/spy500.duckdb
+          EOF
+
+      # 5. Run the full pipeline: ingest → quality checks → dbt run + test
+      - name: Run full pipeline
+        run: python main.py
