@@ -40,7 +40,7 @@ jobs:
             outputs:
               dev:
                 type: duckdb
-                path: ${{ github.workspace }}/data/spy500.duckdb
+                path: ${{ github.workspace }}/data/warehouse.duckdb
           EOF
 
       # 5. Run the full pipeline: ingest → quality checks → dbt run + test
