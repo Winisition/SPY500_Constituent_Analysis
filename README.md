@@ -6,14 +6,14 @@ Built with Python, DuckDB, and dbt.
 
 ## What It Does
 
-The pipeline ingests three datasets — current S&P 500 constituents, historical membership changes, and daily price history for all current and former members — then transforms them through a staging → intermediate → mart layer to produce analytical tables covering:
+The pipeline ingests three datasets: current S&P 500 constituents, historical membership changes, and daily price history for all current and former members. Then, transforms them through a staging → intermediate → mart layer to produce analytical tables covering:
 
 1. **Constituent tenure**: How long has each stock been in the index?
 
 2. **Annualised volatility**: How has each constituent's volatility changed year over year?
 
 3. **Gain/loss ratio**: How do average up-day returns compare to average down-day returns?
-
+1
 4. **Return concentration**: How concentrated are total positive returns among the top 10 tickers, and what share of constituents beat the SPY benchmark each year?
 
 5. **Sector composition**: How is the current index weighted across GICS sectors?
@@ -24,7 +24,7 @@ The pipeline ingests three datasets — current S&P 500 constituents, historical
 
 Note: This analysis uses current S&P 500 constituents only, applied historically. A full historical reconstruction would require point-in-time membership data, which isn't publicly available in clean form.
 
-The S&P 500 is treated as shorthand for "the market": A diversified basket of America's largest companies. But is it really?
+The S&P 500 is treated as shorthand for "the market", a diversified basket of America's largest companies. But is it really?
 
 ![alt text](image.png)
 Tickers in the index often changes more often than it seems. The median constituent has been in for about 20 years, with most tenures under 15. However, a small exceptional group of names has been there since the 1960s.
@@ -42,6 +42,42 @@ What's interesting is that the outperformers don't win more frequently, like we 
 Volatility tells the same story. Tech, Energy, and Consumer Discretionary are consistently the most volatile sectors, and that ranking barely shifts year to year. During downturns, dispersion within those sectors spikes, but the risk stays concentrated in the same few names.
 
 The S&P 500 looks like broad market exposure. In practice it's a high-turnover portfolio where a small number of sectors and an even smaller number of stocks within those sectors drive most of the returns and most of the risk.
+
+## Key Implementation Details
+
+**Tenure reconstruction** (`int_snp500_tenure_event_log_constructed.sql`)
+
+Tenure spans aren't stored directly, and have to be reconstructed from the raw changes history. Therefore, two edge cases need handling before the spans can be built:
+- Tickers that only appear as removals are assumed to have entered at index inception (1957-03-04)
+- Tickers whose last event is an entry are still in the index today, handled via `stg_snp500_current_constituents`
+
+```sql
+first_event_exit as (
+    select
+        ticker,
+        cast('1957-03-04' as date) as start_date,
+        event_date as end_date
+    from {{ ref('int_snp500_tenure_event_log_ordered') }}
+    where event = 2 and event_order = 1
+),
+
+remaining_event as (
+    select event_date, ticker, event
+    from {{ ref('int_snp500_tenure_event_log_ordered') }}
+    where not (
+        (event = 2 and event_order = 1)
+        or (event = 1 and event_order = max_event_order)
+    )
+)
+```
+
+**Log returns** (`int_snp500_daily_return.sql`)
+
+Daily returns are calculated as log returns rather than percentage changes. Log returns are additive across time and closer to normally distributed, which makes them better suited for the volatility and win rate calculations downstream.
+
+```sql
+ln(adj_close / lag(adj_close) over (partition by ticker order by date asc)) as daily_return
+```
 
 ## Project Structure
 
@@ -143,27 +179,25 @@ stg_current_constituents ──── int_tenure_current_constituents ───�
 
 ## Limitations
 
-1. **Survivorship bias on prices.** Approximately 23% of historical S&P 500 constituents have no price data on Yahoo Finance — these are mostly genuine delistings such as bankruptcies and acquisitions from before 2015. All price-derived metrics exclude missing-price tickers (~23%), which biases results toward surviving constituents
+1. **Survivorship bias on prices.** About 23% of historical S&P 500 constituents have no price data on Yahoo Finance. They are possibly genuine delistings like bankruptcies and acquisitions from before 2015. All price-derived metrics exclude these tickers, so results skew toward companies that survived.
 
-2. **yfinance unreliability.** Yahoo Finance is rate-limited and periodically IP-blocks scrapers. Yahoo can change its internal endpoints at any time. For production reproducibility, a paid provider (Tiingo, Polygon) or a static source (stooq) is more reliable.
+2. **yfinance reliability.** Yahoo Finance rate-limits scrapers and occasionally blocks them entirely. The endpoints can change without notice. If you're running this repeatedly or in production, stooq is more dependable.
 
-3. **Pre-1957 stint assumption.** Tickers that appear in the Wikipedia changes log only as removals (no matching add event) are assumed to have entered the index at S&P 500 inception (March 4, 1957). This overstates tenure for those tickers, as they may have joined later but before the changes log starts.
+3. **Pre-1957 tenure assumption.** Tickers that show up in the changes log only as removals without a matching adding ticker are assumed to have been in the index since inception (March 4, 1957). This overstates their tenure if they actually joined later but the changes log did not capture it.
 
-4. **Wikipedia data quality.** Constituents and changes data are community-edited. It is possible for there to be missing changes, inaccurate dates and inconsistent reason wording. There is no cross-validation against S&P's official press releases or a paid data source.
+4. **Wikipedia data quality.** The constituent and changes tables are community maintained. There are likely missing events, and are not cross-validated against S&P's official records.
 
-5. **"Other" reason bucket.** Removals whose Wikipedia reason text doesn't match any regex pattern fall into "Other." Inspection shows these are mostly historical IPO debuts and ambiguous index changes, but some real M&A and market cap cases are likely missed.
+5. **Sector classification is a point-in-time snapshot.** Every ticker gets its current GICS sector from Wikipedia, and historical reclassifications aren't tracked. Therefore, sector-level metrics treat today's classification as if it never changed.
 
-6. **Sector classification is a current snapshot only.** Each ticker has one GICS sector from the current Wikipedia table. Reclassifications over time aren't tracked — sector-based KPIs treat current sector as historical sector.
-
-7. **Date format parsing is brittle.** `strptime` with `'%B %d, %Y'` assumes Wikipedia's date format is consistent across all 394 change rows. Edge cases (e.g., "circa 1990" or unusual formatting) fail silently and rows are dropped.
+6. **Date parsing assumes consistent formatting.** The changes log is parsed with `strptime('%B %d, %Y')`. Assumes Wikipedia's date format is consistent across all 394 change rows. Edge cases (e.g., "circa 1990" or unusual formatting) fail silently if they exist.
 
 ## What's next
 
-1. **Switch price ingestion to stooq** for reliability — yfinance's rate limiting makes reproducing the pipeline risky in the future
+1. **Switch price ingestion to stooq** for reliability, yfinance's rate limiting makes reproducing the pipeline risky in the future
 
-2. **Add the "index inclusion effect" KPI** that was deferred from original scope — does being added to the S&P 500 actually move a stock's price?
+2. **Add the "index inclusion effect" KPI** Does being added to the S&P 500 actually move a stock's price?
 
 3. **Add dbt tests** Expand dbt test coverage to intermediate and mart layers beyond the existing tenure test.
 
-4. **Build a Streamlit dashboard** over the marts as a presentation layer — currently the marts are queried directly via DuckDB CLI.
+4. **Build a Streamlit dashboard** over the marts as a presentation layer
 
